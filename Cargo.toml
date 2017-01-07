@@ -1,0 +1,8 @@
+[package]
+name = "rust-dm"
+version = "0.1.0"
+authors = ["Camille TJHOA <camille@contract-live.com>"]
+
+[dependencies]
+rocket = "0.1.4"
+rocket_codegen = "0.1.4"

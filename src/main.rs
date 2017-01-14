@@ -55,6 +55,11 @@ fn deps_status_from_cargo(cargo: String, deps_type: &str) -> Status {
         match root.get(deps_type) {
             Some(val) => {
                 if let Some(dependencies) = val.as_table() {
+                    // TODO:
+                    // 1- Download the Cargo.toml of the project into /tmp/owner/name/Cargo.toml
+                    // 2- Create a dummy /tmp/owner/name/src/lib.rs (avoid `cargo update` complaint)
+                    // 3- Parse the /tmp/owner/name/Cargo.lock generated
+                    // 4- Compare each deps with semver
                     dependencies.iter().fold(Status::UpToDate, |oldest, (dep, version)| {
                         println!("{:?}", dep);
                         println!("{:?}", version);

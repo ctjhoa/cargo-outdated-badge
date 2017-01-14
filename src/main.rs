@@ -54,48 +54,46 @@ fn get_deps_status(owner: &str, name: &str, deps_type: &str) -> Status {
 
 fn deps_status_from_cargo(owner: &str, name: &str, cargo: String, deps_type: &str) -> Status {
 
-    if let Some(root) = toml::Parser::new(&*cargo).parse() {
-        match root.get(deps_type) {
-            Some(val) => {
-                if let Some(dependencies) = val.as_table() {
-                    // TODO:
-                    // 1- Download the Cargo.toml of the project into /tmp/owner/name/Cargo.toml
-                    // 2- Create a dummy /tmp/owner/name/src/lib.rs (avoid `cargo update` complaint)
-                    let tmp_dir = format!("/tmp/{}/{}", owner, name);
-                    let tmp_manifest = format!("{}/Cargo.toml", tmp_dir);
-                    let tmp_src_dir = format!("{}/src", tmp_dir);
-                    let tmp_src_lib = format!("{}/lib.rs", tmp_src_dir);
+    let root = match toml::Parser::new(&*cargo).parse() {
+        Some(root) => root,
+        None => return Status::Unknown
+    };
 
-                    if let Err(_) = fs::create_dir_all(tmp_src_dir.as_str())
-                        .and_then(|_| File::create(tmp_manifest.as_str()))
-                        .and_then(|mut file| file.write_all(cargo.as_bytes()))
-                        .and_then(|_| File::create(tmp_src_lib.as_str())) {
-                            return Status::Unknown;
-                        }
-                    // 3- `cargo update --manifest-path /tmp/owner/name/Cargo.toml`
-                    if let Err(_) = process::Command::new("cargo")
-                        .arg("update")
-                        .arg("--manifest-path")
-                        .arg(tmp_manifest.as_str())
-                        .output() {
-                            return Status::Unknown;
-                        }
-                    // 4- Parse the /tmp/owner/name/Cargo.lock generated
-                    // 5- Compare each deps with semver
-                    dependencies.iter().fold(Status::UpToDate, |oldest, (dep, version)| {
-                        println!("{:?}", dep);
-                        println!("{:?}", version);
-                        Status::OutOfDate
-                    })
-                } else {
-                    Status::UpToDate
-                }
-            },
-            None => Status::UpToDate
-        }
-    } else {
-        Status::Unknown
-    }
+    let dependencies = match root.get(deps_type)
+        .and_then(|val| val.as_table()) {
+            Some(dependencies) => dependencies,
+            None => return Status::UpToDate
+        };
+
+    // TODO:
+    // 1- Download the Cargo.toml of the project into /tmp/owner/name/Cargo.toml
+    // 2- Create a dummy /tmp/owner/name/src/lib.rs (avoid `cargo update` complaint)
+    let tmp_dir = format!("/tmp/{}/{}", owner, name);
+    let tmp_manifest = format!("{}/Cargo.toml", tmp_dir);
+    let tmp_src_dir = format!("{}/src", tmp_dir);
+    let tmp_src_lib = format!("{}/lib.rs", tmp_src_dir);
+
+    if let Err(_) = fs::create_dir_all(tmp_src_dir.as_str())
+        .and_then(|_| File::create(tmp_manifest.as_str()))
+            .and_then(|mut file| file.write_all(cargo.as_bytes()))
+            .and_then(|_| File::create(tmp_src_lib.as_str())) {
+                return Status::Unknown;
+            }
+    // 3- `cargo update --manifest-path /tmp/owner/name/Cargo.toml`
+    if let Err(_) = process::Command::new("cargo")
+        .arg("update")
+            .arg("--manifest-path")
+            .arg(tmp_manifest.as_str())
+            .output() {
+                return Status::Unknown;
+            }
+    // 4- Parse the /tmp/owner/name/Cargo.lock generated
+    // 5- Compare each deps with semver
+    dependencies.iter().fold(Status::UpToDate, |oldest, (dep, version)| {
+        println!("{:?}", dep);
+        println!("{:?}", version);
+        Status::OutOfDate
+    })
 }
 
 fn main() {

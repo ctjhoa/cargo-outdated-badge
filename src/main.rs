@@ -5,9 +5,10 @@ extern crate reqwest;
 extern crate rocket;
 extern crate toml;
 
-use std::fmt::{Display, Formatter, Error};
-use std::fs::File;
+use std::fmt::{Display, Formatter, self};
+use std::fs::{File, self};
 use std::io::Read;
+use std::io::Write;
 
 enum Status {
     Unknown,
@@ -16,7 +17,7 @@ enum Status {
 }
 
 impl Display for Status {
-    fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
+    fn fmt(&self, f: &mut Formatter) -> Result<(), fmt::Error> {
         match *self {
             Status::Unknown => write!(f, "unknown"),
             Status::OutOfDate => write!(f, "outofdate"),
@@ -41,7 +42,7 @@ fn get_deps_status(owner: &str, name: &str, deps_type: &str) -> Status {
             &reqwest::StatusCode::Ok => {
                 let mut body = String::new();
                 resp.read_to_string(&mut body).ok();
-                deps_status_from_cargo(body, deps_type)
+                deps_status_from_cargo(owner, name, body, deps_type)
             },
             _ => Status::Unknown
         }
@@ -50,7 +51,8 @@ fn get_deps_status(owner: &str, name: &str, deps_type: &str) -> Status {
     }
 }
 
-fn deps_status_from_cargo(cargo: String, deps_type: &str) -> Status {
+fn deps_status_from_cargo(owner: &str, name: &str, cargo: String, deps_type: &str) -> Status {
+
     if let Some(root) = toml::Parser::new(&*cargo).parse() {
         match root.get(deps_type) {
             Some(val) => {
@@ -58,8 +60,20 @@ fn deps_status_from_cargo(cargo: String, deps_type: &str) -> Status {
                     // TODO:
                     // 1- Download the Cargo.toml of the project into /tmp/owner/name/Cargo.toml
                     // 2- Create a dummy /tmp/owner/name/src/lib.rs (avoid `cargo update` complaint)
-                    // 3- Parse the /tmp/owner/name/Cargo.lock generated
-                    // 4- Compare each deps with semver
+                    let tmp_dir = format!("/tmp/{}/{}/src", owner, name);
+                    let tmp_cargo = format!("{}/Cargo.toml", tmp_dir);
+                    let tmp_src_dir = format!("{}/src", tmp_dir);
+                    let tmp_src_lib = format!("{}/lib.rs", tmp_src_dir);
+
+                    if let Err(e) = fs::create_dir_all(tmp_src_dir.as_str())
+                        .and_then(|_| File::create(tmp_cargo.as_str()))
+                        .and_then(|mut file| file.write_all(cargo.as_bytes()))
+                        .and_then(|_| File::create(tmp_src_lib.as_str())) {
+                            Status::Unknown
+                        }
+                    // 3- `cargo update --manifest-path /tmp/owner/name/Cargo.toml`
+                    // 4- Parse the /tmp/owner/name/Cargo.lock generated
+                    // 5- Compare each deps with semver
                     dependencies.iter().fold(Status::UpToDate, |oldest, (dep, version)| {
                         println!("{:?}", dep);
                         println!("{:?}", version);

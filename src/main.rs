@@ -9,6 +9,7 @@ use std::fmt::{Display, Formatter, self};
 use std::fs::{File, self};
 use std::io::Read;
 use std::io::Write;
+use std::process;
 
 enum Status {
     Unknown,
@@ -60,18 +61,25 @@ fn deps_status_from_cargo(owner: &str, name: &str, cargo: String, deps_type: &st
                     // TODO:
                     // 1- Download the Cargo.toml of the project into /tmp/owner/name/Cargo.toml
                     // 2- Create a dummy /tmp/owner/name/src/lib.rs (avoid `cargo update` complaint)
-                    let tmp_dir = format!("/tmp/{}/{}/src", owner, name);
-                    let tmp_cargo = format!("{}/Cargo.toml", tmp_dir);
+                    let tmp_dir = format!("/tmp/{}/{}", owner, name);
+                    let tmp_manifest = format!("{}/Cargo.toml", tmp_dir);
                     let tmp_src_dir = format!("{}/src", tmp_dir);
                     let tmp_src_lib = format!("{}/lib.rs", tmp_src_dir);
 
-                    if let Err(e) = fs::create_dir_all(tmp_src_dir.as_str())
-                        .and_then(|_| File::create(tmp_cargo.as_str()))
+                    if let Err(_) = fs::create_dir_all(tmp_src_dir.as_str())
+                        .and_then(|_| File::create(tmp_manifest.as_str()))
                         .and_then(|mut file| file.write_all(cargo.as_bytes()))
                         .and_then(|_| File::create(tmp_src_lib.as_str())) {
-                            Status::Unknown
+                            return Status::Unknown;
                         }
                     // 3- `cargo update --manifest-path /tmp/owner/name/Cargo.toml`
+                    if let Err(_) = process::Command::new("cargo")
+                        .arg("update")
+                        .arg("--manifest-path")
+                        .arg(tmp_manifest.as_str())
+                        .output() {
+                            return Status::Unknown;
+                        }
                     // 4- Parse the /tmp/owner/name/Cargo.lock generated
                     // 5- Compare each deps with semver
                     dependencies.iter().fold(Status::UpToDate, |oldest, (dep, version)| {

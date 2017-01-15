@@ -12,6 +12,7 @@ use std::io::{Read, Write, self};
 use std::process;
 use std::collections::HashMap;
 
+use rocket::request::FromParam;
 use semver::Version;
 
 #[derive(PartialEq)]
@@ -31,12 +32,42 @@ impl Display for Status {
     }
 }
 
-#[get("/<owner>/<name>")]
-fn index(owner: &str, name: &str) -> io::Result<File> {
+struct MyParam<'r> {
+    deps_type: &'r str,
+    ext: &'r str
+}
+
+impl<'r> FromParam<'r> for MyParam<'r> {
+	type Error = &'r str;
+
+	fn from_param(param: &'r str) -> Result<MyParam<'r>, &'r str> {
+		let (status_type, ext) = match param.find('.') {
+			Some(i) if i > 0 => (&param[..i], &param[(i + 1)..]),
+			_ => return Err(param)
+		};
+
+		Ok(MyParam {
+			deps_type: match status_type {
+                "dev-status" => "dev-dependencies",
+                "status" => "dependencies",
+                _ => return Err(param)
+			},
+			ext: match ext {
+                "png" => "png",
+                "svg" => "svg",
+                _ => return Err(param)
+			},
+		})
+	}
+}
+
+
+#[get("/<owner>/<name>/<params>")]
+fn index(owner: &str, name: &str, params: MyParam) -> io::Result<File> {
     // TODO: HEADER 'Cache-Control': 'no-cache, no-store, must-revalidate',
     // TODO: HEADER 'Expires': new Date().toUTCString()
-    let status = get_deps_status(owner, name, "dependencies");
-    File::open(format!("public/img/status/{}.png", status))
+    let status = get_deps_status(owner, name, params.deps_type);
+    File::open(format!("public/img/status/{}.{}", status, params.ext))
 }
 
 fn get_deps_status(owner: &str, name: &str, deps_type: &str) -> Status {

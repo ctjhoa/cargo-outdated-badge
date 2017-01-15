@@ -8,8 +8,7 @@ extern crate semver;
 
 use std::fmt::{Display, Formatter, self};
 use std::fs::{File, self};
-use std::io::Read;
-use std::io::Write;
+use std::io::{Read, Write, self};
 use std::process;
 use std::collections::HashMap;
 
@@ -33,11 +32,11 @@ impl Display for Status {
 }
 
 #[get("/<owner>/<name>")]
-fn index(owner: &str, name: &str) -> File {
+fn index(owner: &str, name: &str) -> io::Result<File> {
     // TODO: HEADER 'Cache-Control': 'no-cache, no-store, must-revalidate',
     // TODO: HEADER 'Expires': new Date().toUTCString()
     let status = get_deps_status(owner, name, "dependencies");
-    File::open(format!("public/img/status/{}.png", status)).unwrap()
+    File::open(format!("public/img/status/{}.png", status))
 }
 
 fn get_deps_status(owner: &str, name: &str, deps_type: &str) -> Status {

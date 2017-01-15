@@ -10,6 +10,7 @@ use std::fs::{File, self};
 use std::io::Read;
 use std::io::Write;
 use std::process;
+use std::collections::HashMap;
 
 enum Status {
     Unknown,
@@ -118,6 +119,17 @@ fn deps_status_from_cargo(owner: &str, name: &str, cargo: String, deps_type: &st
         Some(_) => unreachable!(),
         None => return Status::Unknown
     };
+
+    let mut updated_deps = HashMap::new();
+    for updated_raw_dep in updated_raw_deps {
+         let raw_dep_vec : Vec<_>= updated_raw_dep.as_str().unwrap_or("").split(' ').collect();
+         if raw_dep_vec.len() < 2 {
+             return Status::Unknown
+         }
+         updated_deps.insert(raw_dep_vec[0], raw_dep_vec[1]);
+    }
+
+    println!("{:?}", updated_deps);
 
     // 5- Compare each deps with semver
     dependencies.iter().fold(Status::UpToDate, |oldest, (dep, version)| {

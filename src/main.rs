@@ -70,6 +70,7 @@ fn deps_status_from_cargo(owner: &str, name: &str, cargo: String, deps_type: &st
     // 2- Create a dummy /tmp/owner/name/src/lib.rs (avoid `cargo update` complaint)
     let tmp_dir = format!("/tmp/{}/{}", owner, name);
     let tmp_manifest = format!("{}/Cargo.toml", tmp_dir);
+    let tmp_lockfile = format!("{}/Cargo.lock", tmp_dir);
     let tmp_src_dir = format!("{}/src", tmp_dir);
     let tmp_src_lib = format!("{}/lib.rs", tmp_src_dir);
 
@@ -88,6 +89,36 @@ fn deps_status_from_cargo(owner: &str, name: &str, cargo: String, deps_type: &st
                 return Status::Unknown;
             }
     // 4- Parse the /tmp/owner/name/Cargo.lock generated
+    let mut buffer = String::new();
+    if let Err(_) = File::open(tmp_lockfile)
+        .and_then(|mut f| f.read_to_string(&mut buffer)) {
+            return Status::Unknown;
+        }
+
+    //let updated_raw_deps = match toml::Parser::new(buffer.as_str()).parse()
+    //    .and_then(|cargo_lockfile | cargo_lockfile.get("root"))
+    //    .and_then(|root| root.lookup("dependencies")) {
+    //        Some(&toml::Value::Array(ref raw_deps)) => raw_deps,
+    //        Some(_) => unreachable!(),
+    //        None => return Status::Unknown
+    //    };
+
+    let tmp_root_lockfile = match toml::Parser::new(buffer.as_str()).parse() {
+        Some(root) => root,
+        None => return Status::Unknown
+    };
+
+    let tmp_root_table = match tmp_root_lockfile.get("root") {
+        Some(root) => root,
+        None => return Status::Unknown
+    };
+
+    let updated_raw_deps = match tmp_root_table.lookup("dependencies") {
+        Some(&toml::Value::Array(ref raw_deps)) => raw_deps,
+        Some(_) => unreachable!(),
+        None => return Status::Unknown
+    };
+
     // 5- Compare each deps with semver
     dependencies.iter().fold(Status::UpToDate, |oldest, (dep, version)| {
         println!("{:?}", dep);

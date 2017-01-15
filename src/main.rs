@@ -4,6 +4,7 @@
 extern crate reqwest;
 extern crate rocket;
 extern crate toml;
+extern crate semver;
 
 use std::fmt::{Display, Formatter, self};
 use std::fs::{File, self};
@@ -12,6 +13,9 @@ use std::io::Write;
 use std::process;
 use std::collections::HashMap;
 
+use semver::Version;
+
+#[derive(PartialEq)]
 enum Status {
     Unknown,
     OutOfDate,
@@ -32,7 +36,7 @@ impl Display for Status {
 fn index(owner: &str, name: &str) -> File {
     // TODO: HEADER 'Cache-Control': 'no-cache, no-store, must-revalidate',
     // TODO: HEADER 'Expires': new Date().toUTCString()
-    let status = get_deps_status(owner, name, "dev-dependencies");
+    let status = get_deps_status(owner, name, "dependencies");
     File::open(format!("public/img/status/{}.png", status)).unwrap()
 }
 
@@ -132,10 +136,25 @@ fn deps_status_from_cargo(owner: &str, name: &str, cargo: String, deps_type: &st
     println!("{:?}", updated_deps);
 
     // 5- Compare each deps with semver
-    dependencies.iter().fold(Status::UpToDate, |oldest, (dep, version)| {
+    dependencies.iter().fold(Status::UpToDate, |oldest, (dep, version_value)| {
+        let updated_version = match updated_deps.get::<str>(&dep.to_string()) {
+            Some(updated_version) => updated_version,
+            None => unreachable!()
+        };
+        let version = match version_value.as_str() {
+            Some(version) => version,
+            None => return Status::Unknown
+        };
         println!("{:?}", dep);
         println!("{:?}", version);
-        Status::OutOfDate
+
+        if Version::parse(updated_version) >  Version::parse(version) {
+            Status::OutOfDate
+        } else if Status::OutOfDate == oldest {
+            Status::OutOfDate
+        } else {
+            Status::UpToDate
+        }
     })
 }
 

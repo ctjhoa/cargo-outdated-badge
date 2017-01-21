@@ -6,20 +6,20 @@ extern crate rocket;
 extern crate toml;
 extern crate semver;
 
+use std::collections::HashMap;
 use std::fmt::{Display, Formatter, self};
 use std::fs::{File, self};
 use std::io::{Read, Write, self};
 use std::process;
-use std::collections::HashMap;
 
 use rocket::request::FromParam;
 use semver::Version;
 
-#[derive(PartialEq)]
+#[derive(Eq, PartialEq, PartialOrd, Ord)]
 enum Status {
-    Unknown,
     OutOfDate,
-    UpToDate
+    UpToDate,
+    Unknown
 }
 
 impl Display for Status {

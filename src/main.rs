@@ -1,6 +1,9 @@
 #![feature(plugin)]
 #![plugin(rocket_codegen)]
 
+#[macro_use]
+extern crate error_chain;
+
 extern crate reqwest;
 extern crate rocket;
 extern crate toml;
@@ -15,6 +18,13 @@ use std::process;
 use rocket::request::FromParam;
 use semver::Version;
 
+mod errors {
+    // Create the Error, ErrorKind, ResultExt, and Result types
+    error_chain! { }
+}
+
+use errors::ResultExt;
+
 #[derive(Eq, PartialEq, PartialOrd, Ord)]
 enum Status {
     OutOfDate,
@@ -23,7 +33,7 @@ enum Status {
 }
 
 impl Display for Status {
-    fn fmt(&self, f: &mut Formatter) -> Result<(), fmt::Error> {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         match *self {
             Status::Unknown => write!(f, "unknown"),
             Status::OutOfDate => write!(f, "outofdate"),
@@ -32,35 +42,44 @@ impl Display for Status {
     }
 }
 
+enum Provider {
+    Github
+}
+
+struct Repository {
+    owner: &'static str,
+    name: &'static str,
+    provider: Provider
+}
+
 struct MyParam<'r> {
     deps_type: &'r str,
     ext: &'r str
 }
 
 impl<'r> FromParam<'r> for MyParam<'r> {
-	type Error = &'r str;
+    type Error = &'r str;
 
-	fn from_param(param: &'r str) -> Result<MyParam<'r>, &'r str> {
-		let (status_type, ext) = match param.find('.') {
-			Some(i) if i > 0 => (&param[..i], &param[(i + 1)..]),
-			_ => return Err(param)
-		};
+    fn from_param(param: &'r str) -> Result<MyParam<'r>, &'r str> {
+        let (status_type, ext) = match param.find('.') {
+            Some(i) if i > 0 => (&param[..i], &param[(i + 1)..]),
+            _ => return Err(param)
+        };
 
-		Ok(MyParam {
-			deps_type: match status_type {
+        Ok(MyParam {
+            deps_type: match status_type {
                 "dev-status" => "dev-dependencies",
                 "status" => "dependencies",
                 _ => return Err(param)
-			},
-			ext: match ext {
+            },
+            ext: match ext {
                 "png" => "png",
                 "svg" => "svg",
                 _ => return Err(param)
-			},
-		})
-	}
+			      },
+		    })
+	  }
 }
-
 
 #[get("/<owner>/<name>/<params>")]
 fn index(owner: &str, name: &str, params: MyParam) -> io::Result<File> {
@@ -188,6 +207,102 @@ fn deps_status_from_cargo(owner: &str, name: &str, cargo: String, deps_type: &st
     })
 }
 
+fn recursive_get_status() -> Status {
+    let mut status = Status::Unknown;
+    // for each sub_dependencies
+    //   let sub_status = recursive_get_status();
+    //   if sub_status < status
+    //     status = sub_status;
+    // create file structure
+    // let my_status = get_status()
+    // if my_status < status
+    //   status = my_status;
+    status
+}
+
+
+fn get_recursive_status(repo: &Repository, dependencies: &toml::Table) -> Status {
+    Status::Unknown
+}
+
+fn get_flat_status(repo: &Repository, dependencies: &toml::Table) -> Status {
+    if let Err(_) = build_file_structure(repo, None) {
+        return Status::Unknown;
+    }
+    Status::Unknown
+}
+
+fn build_file_structure<T: Into<Option<&'static str>>>(repo: &Repository, deps_prefix: T) -> errors::Result<()> {
+    let cargo_url = match repo.provider {
+        Provider::Github => format!("https://raw.githubusercontent.com/{}/{}/master/{}Cargo.toml", repo.owner, repo.name, deps_prefix.into().unwrap_or(""))
+    };
+
+    // 1- Download the Cargo.toml of the project into /tmp/owner/name/Cargo.toml
+    let mut resp = reqwest::get(&*cargo_url)
+        .chain_err(|| "unable to download Cargo.toml")?;
+    let mut cargo = String::new();
+    match resp.status() {
+        &reqwest::StatusCode::Ok => {
+            resp.read_to_string(&mut cargo)
+                .chain_err(|| "unable to read Cargo.toml body")?;
+        },
+        _ => {
+            bail!("bad status code retreiving Cargo.toml");
+        }
+    }
+
+    // 2- Create a dummy /tmp/owner/name/src/lib.rs (avoid `cargo update` complaint)
+    let tmp_dir = format!("/tmp/{}/{}", repo.owner, repo.name);
+    let tmp_manifest = format!("{}/Cargo.toml", tmp_dir);
+    let tmp_lockfile = format!("{}/Cargo.lock", tmp_dir);
+    let tmp_src_dir = format!("{}/src", tmp_dir);
+    let tmp_src_lib = format!("{}/lib.rs", tmp_src_dir);
+
+    fs::create_dir_all(tmp_src_dir.as_str())
+        .and_then(|_| File::create(tmp_manifest.as_str()))
+        .and_then(|mut file| file.write_all(cargo.as_bytes()))
+        .and_then(|_| File::create(tmp_src_lib.as_str()))
+        .chain_err(|| "unable to create tmp file structure")?;
+
+    // 3- `cargo update --manifest-path /tmp/owner/name/Cargo.toml`
+    process::Command::new("cargo")
+        .arg("update")
+        .arg("--manifest-path")
+        .arg(tmp_manifest.as_str())
+        .output()
+        .chain_err(|| "unable to exec cargo update")?;
+
+    // 4- Parse the /tmp/owner/name/Cargo.lock generated
+    let mut buffer = String::new();
+    File::open(tmp_lockfile)
+        .and_then(|mut f| f.read_to_string(&mut buffer))
+        .chain_err(|| "unable to read Cargo.lock")?;
+    Ok(())
+}
+
 fn main() {
     rocket::ignite().mount("/", routes![index]).launch();
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::Path;
+    use std::fs;
+
+    #[test]
+    fn build_flat_structure() {
+        fs::remove_dir_all("/tmp/BurntSushi");
+        let repo = Repository { owner: "BurntSushi", name: "ripgrep", provider: Provider::Github };
+        build_file_structure(&repo, None);
+        assert_eq!(Path::new("/tmp/BurntSushi/ripgrep").exists(), true);
+    }
+
+    //#[test]
+    //fn build_recursive_structure() {
+    //    fs::remove_dir_all("/tmp/foo");
+    //    let repo = Repository { owner: "foo", name: "bar", provider: Provider::Github };
+    //    build_file_structure(&repo, "dep");
+    //    assert_eq!(Path::new("/tmp/foo/bar/dep").exists(), true);
+    //}
 }

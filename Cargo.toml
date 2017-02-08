@@ -4,6 +4,7 @@ version = "0.1.0"
 authors = ["Camille TJHOA <camille@contract-live.com>"]
 
 [dependencies]
+error-chain = "0.9"
 reqwest = "0.2.0"
 rocket = "0.1.4"
 rocket_codegen = "0.1.4"

@@ -225,59 +225,109 @@ fn get_recursive_status(repo: &Repository, dependencies: &toml::Table) -> Status
     Status::Unknown
 }
 
-fn get_flat_status(repo: &Repository, dependencies: &toml::Table) -> Status {
-    if let Err(_) = build_file_structure(repo, None) {
-        return Status::Unknown;
-    }
-    Status::Unknown
+fn get_flat_status(repo: &Repository, dependencies: &toml::Table) -> errors::Result<Status> {
+    build_file_structure(repo, None)
+        .chain_err(|| "unable to build the file structure")?;
+    Ok(Status::Unknown)
 }
 
-fn build_file_structure<T: Into<Option<&'static str>>>(repo: &Repository, deps_prefix: T) -> errors::Result<()> {
-    let cargo_url = match repo.provider {
-        Provider::Github => format!("https://raw.githubusercontent.com/{}/{}/master/{}Cargo.toml", repo.owner, repo.name, deps_prefix.into().unwrap_or(""))
+fn get_cargo_manifest<T: Into<Option<&'static str>>>(repo: &Repository, prefix: T) -> errors::Result<String> {
+    let url = match repo.provider {
+        Provider::Github => {
+            let route = prefix.into().unwrap_or("");
+            let separator = if route.is_empty() { "" } else { "/" };
+            format!("https://raw.githubusercontent.com/{}/{}/master/{}{}Cargo.toml", repo.owner, repo.name, route, separator)
+        }
     };
 
     // 1- Download the Cargo.toml of the project into /tmp/owner/name/Cargo.toml
-    let mut resp = reqwest::get(&*cargo_url)
+    let mut resp = reqwest::get(&*url)
         .chain_err(|| "unable to download Cargo.toml")?;
-    let mut cargo = String::new();
+    let mut buffer = String::new();
     match resp.status() {
         &reqwest::StatusCode::Ok => {
-            resp.read_to_string(&mut cargo)
+            resp.read_to_string(&mut buffer)
                 .chain_err(|| "unable to read Cargo.toml body")?;
+            return Ok(buffer)
         },
         _ => {
             bail!("bad status code retreiving Cargo.toml");
         }
     }
+}
+
+fn build_file_structure<T: Into<Option<&'static str>>>(repo: &Repository, deps_prefix: T) -> errors::Result<String> {
+    let prefix = deps_prefix.into().unwrap_or("");
+    let cargo = get_cargo_manifest(repo, prefix)
+        .chain_err(|| "unable to get cargo manifest")?;
 
     // 2- Create a dummy /tmp/owner/name/src/lib.rs (avoid `cargo update` complaint)
-    let tmp_dir = format!("/tmp/{}/{}", repo.owner, repo.name);
-    let tmp_manifest = format!("{}/Cargo.toml", tmp_dir);
-    let tmp_lockfile = format!("{}/Cargo.lock", tmp_dir);
-    let tmp_src_dir = format!("{}/src", tmp_dir);
-    let tmp_src_lib = format!("{}/lib.rs", tmp_src_dir);
+    let separator = if prefix.is_empty() { "" } else {"/"};
+    let dir = format!("/tmp/{}/{}{}{}", repo.owner, repo.name, separator, prefix);
+    let manifest_path = format!("{}/Cargo.toml", dir);
+    let src_dir = format!("{}/src", dir);
+    let src_lib_path = format!("{}/lib.rs", src_dir);
 
-    fs::create_dir_all(tmp_src_dir.as_str())
-        .and_then(|_| File::create(tmp_manifest.as_str()))
+    fs::create_dir_all(src_dir.as_str())
+        .and_then(|_| File::create(manifest_path.as_str()))
         .and_then(|mut file| file.write_all(cargo.as_bytes()))
-        .and_then(|_| File::create(tmp_src_lib.as_str()))
+        .and_then(|_| File::create(src_lib_path.as_str()))
         .chain_err(|| "unable to create tmp file structure")?;
 
-    // 3- `cargo update --manifest-path /tmp/owner/name/Cargo.toml`
-    process::Command::new("cargo")
+    Ok(String::from(dir))
+}
+
+fn gen_cargo_lock(target_dir: &str) -> errors::Result<String> {
+    let lockfile_path = format!("{}/Cargo.lock", target_dir);
+    let manifest_path = format!("{}/Cargo.toml", target_dir);
+
+    // `cargo update --manifest-path /tmp/owner/name/Cargo.toml`
+    let a = process::Command::new("cargo")
         .arg("update")
         .arg("--manifest-path")
-        .arg(tmp_manifest.as_str())
+        .arg(manifest_path)
         .output()
         .chain_err(|| "unable to exec cargo update")?;
 
-    // 4- Parse the /tmp/owner/name/Cargo.lock generated
+    println!("{:?}", a);
+
+    // Parse the /tmp/owner/name/Cargo.lock generated
     let mut buffer = String::new();
-    File::open(tmp_lockfile)
+    File::open(lockfile_path)
         .and_then(|mut f| f.read_to_string(&mut buffer))
         .chain_err(|| "unable to read Cargo.lock")?;
-    Ok(())
+
+    Ok(buffer)
+}
+
+fn parse_cargo_lock(lockfile: String) -> errors::Result<HashMap<String, String>> {
+    let tmp_root_lockfile = match toml::Parser::new(lockfile.as_str()).parse() {
+        Some(root) => root,
+        None => bail!("unable to parse lockfile")
+    };
+
+    let tmp_root_table = match tmp_root_lockfile.get("root") {
+        Some(root) => root,
+        None => bail!("unable to find root in lockfile")
+    };
+
+    let updated_raw_deps = match tmp_root_table.lookup("dependencies") {
+        Some(&toml::Value::Array(ref raw_deps)) => raw_deps,
+        Some(_) => unreachable!(),
+        None => bail!("unable to find dependencies in lockfile")
+    };
+
+    let mut updated_deps = HashMap::new();
+    for updated_raw_dep in updated_raw_deps {
+        let raw_dep_vec : Vec<_>= updated_raw_dep.as_str().unwrap_or("").split(' ').collect();
+        if raw_dep_vec.len() < 2 {
+            bail!("unable to parse dependencies in lockfile")
+        }
+        updated_deps.insert(String::from(raw_dep_vec[0]), String::from(raw_dep_vec[1]));
+    }
+
+    println!("{:?}", updated_deps);
+    Ok(updated_deps)
 }
 
 fn main() {
@@ -291,11 +341,51 @@ mod tests {
     use std::fs;
 
     #[test]
-    fn build_flat_structure() {
-        fs::remove_dir_all("/tmp/BurntSushi");
-        let repo = Repository { owner: "BurntSushi", name: "ripgrep", provider: Provider::Github };
-        build_file_structure(&repo, None);
-        assert_eq!(Path::new("/tmp/BurntSushi/ripgrep").exists(), true);
+    fn test_build_file_structure() {
+        fs::remove_dir_all("/tmp/ctjhoa");
+        assert_eq!(Path::new("/tmp/ctjhoa/rust-uptodate-app").exists(), false);
+
+        let repo = Repository { owner: "ctjhoa", name: "rust-uptodate-app", provider: Provider::Github };
+        let dir = build_file_structure(&repo, None);
+        assert_eq!("/tmp/ctjhoa/rust-uptodate-app", dir.unwrap().as_str());
+        assert_eq!(Path::new("/tmp/ctjhoa/rust-uptodate-app").exists(), true);
+        assert_eq!(Path::new("/tmp/ctjhoa/rust-uptodate-app/Cargo.toml").exists(), true);
+    }
+
+    #[test]
+    fn test_gen_cargo_lock() {
+        fs::remove_dir_all("/tmp/ctjhoa");
+        let repo = Repository { owner: "ctjhoa", name: "rust-uptodate-app", provider: Provider::Github };
+        let dir = build_file_structure(&repo, None);
+        assert_eq!(Path::new("/tmp/ctjhoa/rust-uptodate-app/Cargo.lock").exists(), false);
+
+        let buffer = gen_cargo_lock(dir.unwrap().as_str());
+        assert_eq!(Path::new("/tmp/ctjhoa/rust-uptodate-app/Cargo.lock").exists(), true);
+        assert_eq!(buffer.unwrap().is_empty(), false);
+    }
+
+    #[test]
+    fn test_build_file_structure_dep() {
+        fs::remove_dir_all("/tmp/ctjhoa");
+        assert_eq!(Path::new("/tmp/ctjhoa/rust-uptodate-app/dep").exists(), false);
+
+        let repo = Repository { owner: "ctjhoa", name: "rust-uptodate-app", provider: Provider::Github };
+        let dir = build_file_structure(&repo, "dep");
+        assert_eq!("/tmp/ctjhoa/rust-uptodate-app/dep", dir.unwrap().as_str());
+        assert_eq!(Path::new("/tmp/ctjhoa/rust-uptodate-app/dep").exists(), true);
+        assert_eq!(Path::new("/tmp/ctjhoa/rust-uptodate-app/dep/Cargo.toml").exists(), true);
+    }
+
+    #[test]
+    fn test_gen_cargo_lock_dep() {
+        fs::remove_dir_all("/tmp/ctjhoa");
+        let repo = Repository { owner: "ctjhoa", name: "rust-uptodate-app", provider: Provider::Github };
+        let dir = build_file_structure(&repo, "dep");
+        assert_eq!(Path::new("/tmp/ctjhoa/rust-uptodate-app/dep/Cargo.lock").exists(), false);
+
+        let buffer = gen_cargo_lock(dir.unwrap().as_str());
+        assert_eq!(Path::new("/tmp/ctjhoa/rust-uptodate-app/dep/Cargo.lock").exists(), true);
+        assert_eq!(buffer.unwrap().is_empty(), false);
     }
 
     //#[test]

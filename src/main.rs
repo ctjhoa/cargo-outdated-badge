@@ -108,9 +108,9 @@ fn get_deps_status(owner: &str, name: &str, deps_type: &str) -> Status {
 
 fn deps_status_from_cargo(owner: &str, name: &str, cargo: String, deps_type: &str) -> Status {
 
-    let root = match toml::Parser::new(&*cargo).parse() {
-        Some(root) => root,
-        None => return Status::Unknown
+    let root = match cargo.as_str().parse::<toml::Value>() {
+        Ok(root) => root,
+        Err(_) => return Status::Unknown
     };
 
     let dependencies = match root.get(deps_type)
@@ -157,9 +157,9 @@ fn deps_status_from_cargo(owner: &str, name: &str, cargo: String, deps_type: &st
     //        None => return Status::Unknown
     //    };
 
-    let tmp_root_lockfile = match toml::Parser::new(buffer.as_str()).parse() {
-        Some(root) => root,
-        None => return Status::Unknown
+    let tmp_root_lockfile = match buffer.as_str().parse::<toml::Value>() {
+        Ok(root) => root,
+        Err(_) => return Status::Unknown
     };
 
     let tmp_root_table = match tmp_root_lockfile.get("root") {
@@ -167,7 +167,7 @@ fn deps_status_from_cargo(owner: &str, name: &str, cargo: String, deps_type: &st
         None => return Status::Unknown
     };
 
-    let updated_raw_deps = match tmp_root_table.lookup("dependencies") {
+    let updated_raw_deps = match tmp_root_table.get("dependencies") {
         Some(&toml::Value::Array(ref raw_deps)) => raw_deps,
         Some(_) => unreachable!(),
         None => return Status::Unknown
@@ -221,11 +221,11 @@ fn recursive_get_status() -> Status {
 }
 
 
-fn get_recursive_status(repo: &Repository, dependencies: &toml::Table) -> Status {
+fn get_recursive_status(repo: &Repository, dependencies: &toml::value::Table) -> Status {
     Status::Unknown
 }
 
-fn get_flat_status(repo: &Repository, dependencies: &toml::Table) -> errors::Result<Status> {
+fn get_flat_status(repo: &Repository, dependencies: &toml::value::Table) -> errors::Result<Status> {
     build_file_structure(repo, None)
         .chain_err(|| "unable to build the file structure")?;
     Ok(Status::Unknown)
@@ -299,9 +299,9 @@ fn gen_cargo_lock(target_dir: &str) -> errors::Result<String> {
 }
 
 fn parse_cargo_lock(lockfile: String) -> errors::Result<HashMap<String, String>> {
-    let tmp_root_lockfile = match toml::Parser::new(lockfile.as_str()).parse() {
-        Some(root) => root,
-        None => bail!("unable to parse lockfile")
+    let tmp_root_lockfile = match lockfile.as_str().parse::<toml::Value>() {
+        Ok(root) => root,
+        Err(_) => bail!("unable to parse lockfile")
     };
 
     let tmp_root_table = match tmp_root_lockfile.get("root") {
@@ -309,7 +309,7 @@ fn parse_cargo_lock(lockfile: String) -> errors::Result<HashMap<String, String>>
         None => bail!("unable to find root in lockfile")
     };
 
-    let updated_raw_deps = match tmp_root_table.lookup("dependencies") {
+    let updated_raw_deps = match tmp_root_table.get("dependencies") {
         Some(&toml::Value::Array(ref raw_deps)) => raw_deps,
         Some(_) => unreachable!(),
         None => bail!("unable to find dependencies in lockfile")

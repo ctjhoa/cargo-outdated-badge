@@ -282,14 +282,12 @@ fn gen_cargo_lock(target_dir: &str) -> errors::Result<String> {
     let manifest_path = format!("{}/Cargo.toml", target_dir);
 
     // `cargo update --manifest-path /tmp/owner/name/Cargo.toml`
-    let a = process::Command::new("cargo")
+    process::Command::new("cargo")
         .arg("update")
         .arg("--manifest-path")
         .arg(manifest_path)
         .output()
         .chain_err(|| "unable to exec cargo update")?;
-
-    println!("{:?}", a);
 
     // Parse the /tmp/owner/name/Cargo.lock generated
     let mut buffer = String::new();
@@ -326,7 +324,6 @@ fn parse_cargo_lock(lockfile: String) -> errors::Result<HashMap<String, String>>
         updated_deps.insert(String::from(raw_dep_vec[0]), String::from(raw_dep_vec[1]));
     }
 
-    println!("{:?}", updated_deps);
     Ok(updated_deps)
 }
 

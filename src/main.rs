@@ -341,58 +341,36 @@ mod tests {
     use std::fs;
 
     #[test]
-    fn test_build_file_structure() {
+    fn test_uptodate_app() {
         fs::remove_dir_all("/tmp/ctjhoa");
         assert_eq!(Path::new("/tmp/ctjhoa/rust-uptodate-app").exists(), false);
 
         let repo = Repository { owner: "ctjhoa", name: "rust-uptodate-app", provider: Provider::Github };
-        let dir = build_file_structure(&repo, None);
-        assert_eq!("/tmp/ctjhoa/rust-uptodate-app", dir.unwrap().as_str());
+
+        // build_file_structure: main
+        let dir = build_file_structure(&repo, None).unwrap();
+        assert_eq!("/tmp/ctjhoa/rust-uptodate-app", dir.clone().as_str());
         assert_eq!(Path::new("/tmp/ctjhoa/rust-uptodate-app").exists(), true);
         assert_eq!(Path::new("/tmp/ctjhoa/rust-uptodate-app/Cargo.toml").exists(), true);
-    }
 
-    #[test]
-    fn test_gen_cargo_lock() {
-        fs::remove_dir_all("/tmp/ctjhoa");
-        let repo = Repository { owner: "ctjhoa", name: "rust-uptodate-app", provider: Provider::Github };
-        let dir = build_file_structure(&repo, None);
-        assert_eq!(Path::new("/tmp/ctjhoa/rust-uptodate-app/Cargo.lock").exists(), false);
-
-        let buffer = gen_cargo_lock(dir.unwrap().as_str());
-        assert_eq!(Path::new("/tmp/ctjhoa/rust-uptodate-app/Cargo.lock").exists(), true);
-        assert_eq!(buffer.unwrap().is_empty(), false);
-    }
-
-    #[test]
-    fn test_build_file_structure_dep() {
-        fs::remove_dir_all("/tmp/ctjhoa");
+        // build_file_structure: `dep`
         assert_eq!(Path::new("/tmp/ctjhoa/rust-uptodate-app/dep").exists(), false);
-
-        let repo = Repository { owner: "ctjhoa", name: "rust-uptodate-app", provider: Provider::Github };
-        let dir = build_file_structure(&repo, "dep");
-        assert_eq!("/tmp/ctjhoa/rust-uptodate-app/dep", dir.unwrap().as_str());
+        let dir_dep = build_file_structure(&repo, "dep").unwrap();
+        assert_eq!("/tmp/ctjhoa/rust-uptodate-app/dep", dir_dep.clone().as_str());
         assert_eq!(Path::new("/tmp/ctjhoa/rust-uptodate-app/dep").exists(), true);
         assert_eq!(Path::new("/tmp/ctjhoa/rust-uptodate-app/dep/Cargo.toml").exists(), true);
-    }
 
-    #[test]
-    fn test_gen_cargo_lock_dep() {
-        fs::remove_dir_all("/tmp/ctjhoa");
-        let repo = Repository { owner: "ctjhoa", name: "rust-uptodate-app", provider: Provider::Github };
-        let dir = build_file_structure(&repo, "dep");
-        assert_eq!(Path::new("/tmp/ctjhoa/rust-uptodate-app/dep/Cargo.lock").exists(), false);
 
-        let buffer = gen_cargo_lock(dir.unwrap().as_str());
-        assert_eq!(Path::new("/tmp/ctjhoa/rust-uptodate-app/dep/Cargo.lock").exists(), true);
+        // gen_cargo_lock: main
+        assert_eq!(Path::new("/tmp/ctjhoa/rust-uptodate-app/Cargo.lock").exists(), false);
+        let buffer = gen_cargo_lock(dir.clone().as_str());
+        assert_eq!(Path::new("/tmp/ctjhoa/rust-uptodate-app/Cargo.lock").exists(), true);
         assert_eq!(buffer.unwrap().is_empty(), false);
-    }
 
-    //#[test]
-    //fn build_recursive_structure() {
-    //    fs::remove_dir_all("/tmp/foo");
-    //    let repo = Repository { owner: "foo", name: "bar", provider: Provider::Github };
-    //    build_file_structure(&repo, "dep");
-    //    assert_eq!(Path::new("/tmp/foo/bar/dep").exists(), true);
-    //}
+        // gen_cargo_lock: `dep`
+        assert_eq!(Path::new("/tmp/ctjhoa/rust-uptodate-app/dep/Cargo.lock").exists(), false);
+        let buffer_dep = gen_cargo_lock(dir_dep.clone().as_str());
+        assert_eq!(Path::new("/tmp/ctjhoa/rust-uptodate-app/dep/Cargo.lock").exists(), true);
+        assert_eq!(buffer_dep.unwrap().is_empty(), false);
+    }
 }

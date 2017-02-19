@@ -363,14 +363,30 @@ mod tests {
 
         // gen_cargo_lock: main
         assert_eq!(Path::new("/tmp/ctjhoa/rust-uptodate-app/Cargo.lock").exists(), false);
-        let buffer = gen_cargo_lock(dir.clone().as_str());
+        let buffer = gen_cargo_lock(dir.clone().as_str()).unwrap();
         assert_eq!(Path::new("/tmp/ctjhoa/rust-uptodate-app/Cargo.lock").exists(), true);
-        assert_eq!(buffer.unwrap().is_empty(), false);
+        assert_eq!(buffer.clone().is_empty(), false);
 
         // gen_cargo_lock: `dep`
         assert_eq!(Path::new("/tmp/ctjhoa/rust-uptodate-app/dep/Cargo.lock").exists(), false);
-        let buffer_dep = gen_cargo_lock(dir_dep.clone().as_str());
+        let buffer_dep = gen_cargo_lock(dir_dep.clone().as_str()).unwrap();
         assert_eq!(Path::new("/tmp/ctjhoa/rust-uptodate-app/dep/Cargo.lock").exists(), true);
-        assert_eq!(buffer_dep.unwrap().is_empty(), false);
+        assert_eq!(buffer_dep.clone().is_empty(), false);
+
+
+        // parse_cargo_lock: main
+        let hash_map_result: HashMap<String, String> =
+            [("dep".to_string(), "0.2.0".to_string()),
+             ("toml".to_string(), "0.2.1".to_string())]
+            .iter().cloned().collect();
+        let hash_map = parse_cargo_lock(buffer.clone()).unwrap();
+        assert_eq!(hash_map, hash_map_result);
+
+        // parse_cargo_lock: `dep`
+        let hash_map_dep_result: HashMap<String, String> =
+            [("semver".to_string(), "0.6.0".to_string())]
+            .iter().cloned().collect();
+        let hash_map_dep = parse_cargo_lock(buffer_dep.clone()).unwrap();
+        assert_eq!(hash_map_dep, hash_map_dep_result);
     }
 }

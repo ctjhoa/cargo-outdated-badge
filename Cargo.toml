@@ -5,8 +5,9 @@ authors = ["Camille TJHOA <camille@contract-live.com>"]
 
 [dependencies]
 error-chain = "0.9"
+log = "0.3.6"
 reqwest = "0.2.0"
 rocket = "0.1.4"
 rocket_codegen = "0.1.4"
-toml = "0.2"
 semver = "0.5.1"
+toml = "0.2"

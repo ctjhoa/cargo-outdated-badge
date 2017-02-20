@@ -1,6 +1,7 @@
 #![feature(plugin)]
 #![plugin(rocket_codegen)]
-
+#[macro_use]
+extern crate error_chain;
 extern crate reqwest;
 extern crate rocket;
 extern crate toml;
@@ -15,6 +16,13 @@ use std::process;
 use rocket::request::FromParam;
 use semver::Version;
 
+mod errors {
+    // Create the Error, ErrorKind, ResultExt, and Result types
+    error_chain! { }
+}
+
+use errors::ResultExt;
+
 #[derive(Eq, PartialEq, PartialOrd, Ord)]
 enum Status {
     OutOfDate,
@@ -23,7 +31,7 @@ enum Status {
 }
 
 impl Display for Status {
-    fn fmt(&self, f: &mut Formatter) -> Result<(), fmt::Error> {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         match *self {
             Status::Unknown => write!(f, "unknown"),
             Status::OutOfDate => write!(f, "outofdate"),
@@ -66,40 +74,58 @@ impl<'r> FromParam<'r> for MyParam<'r> {
 fn index(owner: &str, name: &str, params: MyParam) -> io::Result<File> {
     // TODO: HEADER 'Cache-Control': 'no-cache, no-store, must-revalidate',
     // TODO: HEADER 'Expires': new Date().toUTCString()
-    let status = get_deps_status(owner, name, params.deps_type);
+    let status = match get_deps_status(owner, name, params.deps_type) {
+        Ok(status) => status,
+        Err(ref e) => {
+            println!("error: {}", e);
+
+            for e in e.iter().skip(1) {
+                println!("caused by: {}", e);
+            }
+
+            // The backtrace is not always generated. Try to run this example
+            // with `RUST_BACKTRACE=1`.
+            if let Some(backtrace) = e.backtrace() {
+                println!("backtrace: {:?}", backtrace);
+            }
+            Status::Unknown
+        }
+    };
     File::open(format!("public/img/status/{}.{}", status, params.ext))
 }
 
-fn get_deps_status(owner: &str, name: &str, deps_type: &str) -> Status {
+fn get_deps_status(owner: &str, name: &str, deps_type: &str) -> errors::Result<Status> {
     let cargo_url = format!("https://raw.githubusercontent.com/{}/{}/master/Cargo.toml",
                             owner,
                             name);
 
-    if let Ok(mut resp) = reqwest::get(&*cargo_url) {
-        match resp.status() {
-            &reqwest::StatusCode::Ok => {
-                let mut body = String::new();
-                resp.read_to_string(&mut body).ok();
-                deps_status_from_cargo(owner, name, body, deps_type)
-            }
-            _ => Status::Unknown,
+    let mut resp = reqwest::get(cargo_url.as_str())
+        .chain_err(|| "Unable to download Cargo.toml")?;
+
+    let mut buffer = String::new();
+    match resp.status() {
+        &reqwest::StatusCode::Ok => {
+            resp.read_to_string(&mut buffer)
+                .chain_err(|| "Unable to read Cargo.toml body")?;
+            deps_status_from_cargo(owner, name, buffer, deps_type)
+                .chain_err(|| "Unable verify status")
+        },
+        _ => {
+            bail!("Bad status code retreiving Cargo.toml");
         }
-    } else {
-        Status::Unknown
     }
 }
 
-fn deps_status_from_cargo(owner: &str, name: &str, cargo: String, deps_type: &str) -> Status {
+fn deps_status_from_cargo(owner: &str, name: &str, cargo: String, deps_type: &str) -> errors::Result<Status> {
 
-    let root = match cargo.as_str().parse::<toml::Value>() {
-        Ok(root) => root,
-        Err(_) => return Status::Unknown,
-    };
+    let root = cargo.as_str()
+        .parse::<toml::Value>()
+        .chain_err(|| "Unable to parse manifest")?;
 
     let dependencies = match root.get(deps_type)
         .and_then(|val| val.as_table()) {
         Some(dependencies) => dependencies,
-        None => return Status::UpToDate,
+        None => return Ok(Status::UpToDate),
     };
 
     // TODO:
@@ -111,55 +137,46 @@ fn deps_status_from_cargo(owner: &str, name: &str, cargo: String, deps_type: &st
     let tmp_src_dir = format!("{}/src", tmp_dir);
     let tmp_src_lib = format!("{}/lib.rs", tmp_src_dir);
 
-    if let Err(_) = fs::create_dir_all(tmp_src_dir.as_str())
+    fs::create_dir_all(tmp_src_dir.as_str())
         .and_then(|_| File::create(tmp_manifest.as_str()))
         .and_then(|mut file| file.write_all(cargo.as_bytes()))
-        .and_then(|_| File::create(tmp_src_lib.as_str())) {
-        return Status::Unknown;
-    }
+        .and_then(|_| File::create(tmp_src_lib.as_str()))
+        .chain_err(|| "Unable to create tmp file structure")?;
+
     // 3- `cargo update --manifest-path /tmp/owner/name/Cargo.toml`
-    if let Err(_) = process::Command::new("cargo")
+    process::Command::new("cargo")
         .arg("update")
         .arg("--manifest-path")
         .arg(tmp_manifest.as_str())
-        .output() {
-        return Status::Unknown;
-    }
+        .output()
+        .chain_err(|| "Unable to exec cargo update")?;
+
     // 4- Parse the /tmp/owner/name/Cargo.lock generated
     let mut buffer = String::new();
-    if let Err(_) = File::open(tmp_lockfile).and_then(|mut f| f.read_to_string(&mut buffer)) {
-        return Status::Unknown;
-    }
+    File::open(tmp_lockfile)
+        .and_then(|mut f| f.read_to_string(&mut buffer))
+        .chain_err(|| "Unable to read Cargo.lock")?;
 
-    //let updated_raw_deps = match toml::Parser::new(buffer.as_str()).parse()
-    //    .and_then(|cargo_lockfile | cargo_lockfile.get("root"))
-    //    .and_then(|root| root.get("dependencies")) {
-    //        Some(&toml::Value::Array(ref raw_deps)) => raw_deps,
-    //        Some(_) => unreachable!(),
-    //        None => return Status::Unknown
-    //    };
-
-    let tmp_root_lockfile = match buffer.as_str().parse::<toml::Value>() {
-        Ok(root) => root,
-        Err(_) => return Status::Unknown,
-    };
+    let tmp_root_lockfile = buffer.as_str()
+        .parse::<toml::Value>()
+        .chain_err(|| "Unable to parse Cargo.lock")?;
 
     let tmp_root_table = match tmp_root_lockfile.get("root") {
         Some(root) => root,
-        None => return Status::Unknown,
+        None => bail!("Unable to find root in lockfile"),
     };
 
     let updated_raw_deps = match tmp_root_table.get("dependencies") {
         Some(&toml::Value::Array(ref raw_deps)) => raw_deps,
         Some(_) => unreachable!(),
-        None => return Status::Unknown,
+        None => bail!("Unable to find dependencies in lockfile"),
     };
 
     let mut updated_deps = HashMap::new();
     for updated_raw_dep in updated_raw_deps {
         let raw_dep_vec: Vec<_> = updated_raw_dep.as_str().unwrap_or("").split(' ').collect();
         if raw_dep_vec.len() < 2 {
-            return Status::Unknown;
+            bail!("Invalid dependency found");
         }
         updated_deps.insert(raw_dep_vec[0], raw_dep_vec[1]);
     }
@@ -167,14 +184,14 @@ fn deps_status_from_cargo(owner: &str, name: &str, cargo: String, deps_type: &st
     println!("{:?}", updated_deps);
 
     // 5- Compare each deps with semver
-    dependencies.iter().fold(Status::UpToDate, |oldest, (dep, version_value)| {
+    let status = dependencies.iter().fold(Status::UpToDate, |oldest, (dep, version_value)| {
         let updated_version = match updated_deps.get::<str>(&dep.to_string()) {
             Some(updated_version) => updated_version,
             None => unreachable!(),
         };
         let version = match version_value.as_str() {
             Some(version) => version,
-            None => return Status::Unknown,
+            None => return oldest,
         };
         println!("{:?}", dep);
         println!("{:?}", version);
@@ -186,7 +203,9 @@ fn deps_status_from_cargo(owner: &str, name: &str, cargo: String, deps_type: &st
         } else {
             Status::UpToDate
         }
-    })
+    });
+
+    Ok(status)
 }
 
 fn main() {

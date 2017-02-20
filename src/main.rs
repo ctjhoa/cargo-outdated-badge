@@ -181,8 +181,6 @@ fn deps_status_from_cargo(owner: &str, name: &str, cargo: String, deps_type: &st
         updated_deps.insert(raw_dep_vec[0], raw_dep_vec[1]);
     }
 
-    println!("{:?}", updated_deps);
-
     // 5- Compare each deps with semver
     let status = dependencies.iter().fold(Status::UpToDate, |oldest, (dep, version_value)| {
         let updated_version = match updated_deps.get::<str>(&dep.to_string()) {
@@ -193,8 +191,6 @@ fn deps_status_from_cargo(owner: &str, name: &str, cargo: String, deps_type: &st
             Some(version) => version,
             None => return oldest,
         };
-        println!("{:?}", dep);
-        println!("{:?}", version);
 
         if Version::parse(updated_version) > Version::parse(version) {
             Status::OutOfDate

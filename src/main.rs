@@ -192,6 +192,10 @@ fn deps_status_from_cargo(owner: &str, name: &str, cargo: String, deps_type: &st
         };
 
         if Version::parse(updated_version) > Version::parse(version) {
+            println!("{} is outdated", dep);
+            println!("Specified: {}", version);
+            println!("Latest: {}", updated_version);
+            println!("");
             Status::OutOfDate
         } else if Status::OutOfDate == oldest {
             Status::OutOfDate

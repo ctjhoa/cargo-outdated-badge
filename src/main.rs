@@ -128,7 +128,6 @@ fn deps_status_from_cargo(owner: &str, name: &str, cargo: String, deps_type: &st
         None => return Ok(Status::UpToDate),
     };
 
-    // TODO:
     // 1- Download the Cargo.toml of the project into /tmp/owner/name/Cargo.toml
     // 2- Create a dummy /tmp/owner/name/src/lib.rs (avoid `cargo update` complaint)
     let tmp_dir = format!("/tmp/{}/{}", owner, name);

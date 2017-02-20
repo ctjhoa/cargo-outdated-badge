@@ -89,9 +89,9 @@ fn get_deps_status(owner: &str, name: &str, deps_type: &str) -> Status {
 
 fn deps_status_from_cargo(owner: &str, name: &str, cargo: String, deps_type: &str) -> Status {
 
-    let root = match toml::Parser::new(&*cargo).parse() {
-        Some(root) => root,
-        None => return Status::Unknown
+    let root = match cargo.as_str().parse::<toml::Value>() {
+        Ok(root) => root,
+        Err(_) => return Status::Unknown
     };
 
     let dependencies = match root.get(deps_type)
@@ -132,15 +132,15 @@ fn deps_status_from_cargo(owner: &str, name: &str, cargo: String, deps_type: &st
 
     //let updated_raw_deps = match toml::Parser::new(buffer.as_str()).parse()
     //    .and_then(|cargo_lockfile | cargo_lockfile.get("root"))
-    //    .and_then(|root| root.lookup("dependencies")) {
+    //    .and_then(|root| root.get("dependencies")) {
     //        Some(&toml::Value::Array(ref raw_deps)) => raw_deps,
     //        Some(_) => unreachable!(),
     //        None => return Status::Unknown
     //    };
 
-    let tmp_root_lockfile = match toml::Parser::new(buffer.as_str()).parse() {
-        Some(root) => root,
-        None => return Status::Unknown
+    let tmp_root_lockfile = match buffer.as_str().parse::<toml::Value>() {
+        Ok(root) => root,
+        Err(_) => return Status::Unknown
     };
 
     let tmp_root_table = match tmp_root_lockfile.get("root") {
@@ -148,7 +148,7 @@ fn deps_status_from_cargo(owner: &str, name: &str, cargo: String, deps_type: &st
         None => return Status::Unknown
     };
 
-    let updated_raw_deps = match tmp_root_table.lookup("dependencies") {
+    let updated_raw_deps = match tmp_root_table.get("dependencies") {
         Some(&toml::Value::Array(ref raw_deps)) => raw_deps,
         Some(_) => unreachable!(),
         None => return Status::Unknown

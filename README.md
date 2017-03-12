@@ -12,10 +12,12 @@ You can get dependencies and development dependencies statuses in `svg` or `png`
 - `format`: it could be `svg` or `png`
 
 For example, to check development dependencies on this repository in svg, use this url:
+
 http://34.249.40.139/ctjhoa/cargo-outdated-badge/dev-status.svg
 
 ### Demo
 I've created an demo server on AWS at this address: http://34.249.40.139/
+
 You can use it as you want but I cannot guarantee the availability of the service.
 
 ### Run locally

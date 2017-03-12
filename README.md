@@ -32,6 +32,7 @@ This project does not currently support:
 - [build dependencies](http://doc.crates.io/specifying-dependencies.html#build-dependencies)
 - [git dependencies](http://doc.crates.io/specifying-dependencies.html#specifying-dependencies-from-git-repositories)
 - [path dependencies](http://doc.crates.io/specifying-dependencies.html#specifying-path-dependencies)
+- Other branch than `master`
 
 ## Thanks
 - [SergioBenitez/Rocket](https://github.com/SergioBenitez/Rocket)

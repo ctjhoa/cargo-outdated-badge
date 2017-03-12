@@ -4,8 +4,9 @@
 extern crate error_chain;
 extern crate reqwest;
 extern crate rocket;
-extern crate toml;
 extern crate semver;
+extern crate tempdir;
+extern crate toml;
 
 use std::collections::HashMap;
 use std::fmt::{self, Display, Formatter};
@@ -15,6 +16,7 @@ use std::process;
 
 use rocket::request::FromParam;
 use semver::Version;
+use tempdir::TempDir;
 
 mod errors {
     // Create the Error, ErrorKind, ResultExt, and Result types
@@ -95,11 +97,11 @@ fn index(owner: &str, name: &str, params: MyParam) -> io::Result<File> {
 }
 
 fn get_deps_status(owner: &str, name: &str, deps_type: &str) -> errors::Result<Status> {
-    let cargo_url = format!("https://raw.githubusercontent.com/{}/{}/master/Cargo.toml",
+    let manifest_url = format!("https://raw.githubusercontent.com/{}/{}/master/Cargo.toml",
                             owner,
                             name);
 
-    let mut resp = reqwest::get(cargo_url.as_str())
+    let mut resp = reqwest::get(manifest_url.as_str())
         .chain_err(|| "Unable to download Cargo.toml")?;
 
     let mut buffer = String::new();
@@ -116,9 +118,9 @@ fn get_deps_status(owner: &str, name: &str, deps_type: &str) -> errors::Result<S
     }
 }
 
-fn deps_status_from_cargo(owner: &str, name: &str, cargo: String, deps_type: &str) -> errors::Result<Status> {
+fn deps_status_from_cargo(owner: &str, name: &str, manifest: String, deps_type: &str) -> errors::Result<Status> {
 
-    let root = cargo.as_str()
+    let root = manifest.as_str()
         .parse::<toml::Value>()
         .chain_err(|| "Unable to parse manifest")?;
 
@@ -130,28 +132,30 @@ fn deps_status_from_cargo(owner: &str, name: &str, cargo: String, deps_type: &st
 
     // 1- Download the Cargo.toml of the project into /tmp/owner/name/Cargo.toml
     // 2- Create a dummy /tmp/owner/name/src/lib.rs (avoid `cargo update` complaint)
-    let tmp_dir = format!("/tmp/{}/{}", owner, name);
-    let tmp_manifest = format!("{}/Cargo.toml", tmp_dir);
-    let tmp_lockfile = format!("{}/Cargo.lock", tmp_dir);
-    let tmp_src_dir = format!("{}/src", tmp_dir);
-    let tmp_src_lib = format!("{}/lib.rs", tmp_src_dir);
+    let tmp_dir = TempDir::new(format!("{}_{}", owner, name).as_str())
+        .chain_err(|| "Unable to create tmp dir")?;
+    let tmp_manifest = tmp_dir.path().join("Cargo.toml");
+    let tmp_lockfile = tmp_dir.path().join("Cargo.lock");
+    let tmp_src_dir = tmp_dir.path().join("src");
+    let tmp_src_lib = tmp_src_dir.join("lib.rs");
 
-    fs::create_dir_all(tmp_src_dir.as_str())
-        .and_then(|_| File::create(tmp_manifest.as_str()))
-        .and_then(|mut file| file.write_all(cargo.as_bytes()))
-        .and_then(|_| File::create(tmp_src_lib.as_str()))
+    File::create(tmp_manifest.clone())
+        .and_then(|mut file| file.write_all(manifest.as_bytes()))
+        .and_then(|_| fs::create_dir(tmp_src_dir))
+        .and_then(|_| File::create(tmp_src_lib))
         .chain_err(|| "Unable to create tmp file structure")?;
 
     // 3- `cargo update --manifest-path /tmp/owner/name/Cargo.toml`
-    process::Command::new("cargo")
+    let output = process::Command::new("cargo")
         .arg("update")
         .arg("--manifest-path")
-        .arg(tmp_manifest.as_str())
+        .arg(tmp_manifest)
         .output()
         .chain_err(|| "Unable to exec cargo update")?;
 
     // 4- Parse the /tmp/owner/name/Cargo.lock generated
     let mut buffer = String::new();
+
     File::open(tmp_lockfile)
         .and_then(|mut f| f.read_to_string(&mut buffer))
         .chain_err(|| "Unable to read Cargo.lock")?;

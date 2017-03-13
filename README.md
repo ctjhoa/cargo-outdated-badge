@@ -1,5 +1,5 @@
-<img src="https://34.249.40.139/ctjhoa/cargo-outdated-badge/status.svg" alt="Dependency Status">
-<img src="https://34.249.40.139/ctjhoa/cargo-outdated-badge/dev-status.svg" alt="devDependency Status">
+<img src="http://34.249.40.139/ctjhoa/cargo-outdated-badge/status.svg" alt="Dependency Status">
+<img src="http://34.249.40.139/ctjhoa/cargo-outdated-badge/dev-status.svg" alt="devDependency Status">
 
 # cargo-outdated-badge
 It's an experimental tool that tells you when your cargo dependencies are out of date. (Similar to https://david-dm.org/ for npm)

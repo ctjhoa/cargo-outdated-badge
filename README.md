@@ -39,7 +39,7 @@ This project does not currently support:
 - [path dependencies](http://doc.crates.io/specifying-dependencies.html#specifying-path-dependencies)
 - Other branch than `master`
 
-## Thanks
+## Thanks to
 - [SergioBenitez/Rocket](https://github.com/SergioBenitez/Rocket)
 - [alanshaw/david](https://github.com/alanshaw/david)
 - [alexcrichton/toml-rs](https://github.com/alexcrichton/toml-rs)

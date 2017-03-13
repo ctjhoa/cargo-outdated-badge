@@ -94,7 +94,7 @@ fn index(owner: &str, name: &str, params: MyParam) -> io::Result<NamedFile> {
             Status::Unknown
         }
     };
-    NamedFile::open(format!("public/img/status/{}.{}", status, params.ext))
+    NamedFile::open(format!("public/img/status/{}/{}.{}", params.deps_type, status, params.ext))
 }
 
 fn get_deps_status(owner: &str, name: &str, deps_type: &str) -> errors::Result<Status> {

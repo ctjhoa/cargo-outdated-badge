@@ -15,6 +15,7 @@ use std::io::{self, Read, Write};
 use std::process;
 
 use rocket::request::FromParam;
+use rocket::response::NamedFile;
 use semver::Version;
 use tempdir::TempDir;
 
@@ -73,7 +74,7 @@ impl<'r> FromParam<'r> for MyParam<'r> {
 
 
 #[get("/<owner>/<name>/<params>")]
-fn index(owner: &str, name: &str, params: MyParam) -> io::Result<File> {
+fn index(owner: &str, name: &str, params: MyParam) -> io::Result<NamedFile> {
     // TODO: HEADER 'Cache-Control': 'no-cache, no-store, must-revalidate',
     // TODO: HEADER 'Expires': new Date().toUTCString()
     let status = match get_deps_status(owner, name, params.deps_type) {
@@ -93,7 +94,7 @@ fn index(owner: &str, name: &str, params: MyParam) -> io::Result<File> {
             Status::Unknown
         }
     };
-    File::open(format!("public/img/status/{}.{}", status, params.ext))
+    NamedFile::open(format!("public/img/status/{}.{}", status, params.ext))
 }
 
 fn get_deps_status(owner: &str, name: &str, deps_type: &str) -> errors::Result<Status> {

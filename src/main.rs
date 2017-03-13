@@ -147,7 +147,7 @@ fn deps_status_from_cargo(owner: &str, name: &str, manifest: String, deps_type: 
         .chain_err(|| "Unable to create tmp file structure")?;
 
     // 3- `cargo update --manifest-path /tmp/owner/name/Cargo.toml`
-    let output = process::Command::new("cargo")
+    process::Command::new("cargo")
         .arg("update")
         .arg("--manifest-path")
         .arg(tmp_manifest)

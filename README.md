@@ -1,6 +1,6 @@
 <p align="center">
-<a href="#"><img src="http://34.249.40.139/ctjhoa/cargo-outdated-badge/status.svg" alt="Dependency Status"></a>
-<a href="#"><img src="http://34.249.40.139/ctjhoa/cargo-outdated-badge/dev-status.svg" alt="devDependency Status"></a>
+<a href="#"><img src="http://34.249.40.139/ctjhoa/cargo-outdated-badge/status.png" alt="Dependency Status"></a>
+<a href="#"><img src="http://34.249.40.139/ctjhoa/cargo-outdated-badge/dev-status.png" alt="devDependency Status"></a>
 </p>
 
 # cargo-outdated-badge

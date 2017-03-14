@@ -45,4 +45,5 @@ This project does not currently support:
 - [alexcrichton/toml-rs](https://github.com/alexcrichton/toml-rs)
 - [brson/error-chain](https://github.com/brson/error-chain)
 - [kbknapp/cargo-outdated](https://github.com/kbknapp/cargo-outdated)
+- [seanmonstar/reqwest](https://github.com/seanmonstar/reqwest)
 - [steveklabnik/semver](https://github.com/steveklabnik/semver)
